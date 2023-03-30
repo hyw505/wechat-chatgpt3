@@ -4,6 +4,12 @@ import { Message } from "wechaty";
 import {FileBox} from "file-box";
 import {chatgpt, dalle, whisper} from "./openai.js";
 import DBUtils from "./data.js";
+import knowledgeBase from './knowledge_base/data/background.json';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import fs from 'fs';
+
+
 enum MessageType {
   Unknown = 0,
   Attachment = 1, // Attach(6),
@@ -242,6 +248,28 @@ export class ChatGPTBot {
     if (this.isNonsense(talker, messageType, rawText)) {
       return;
     }
+
+    //add by hyw start===================
+    let context: string[] = [];
+
+    // 访问知识库
+    const knowledgeBaseFilePath = new URL('./knowledge_base/data/background.json', import.meta.url).pathname;
+    const knowledgeBase = JSON.parse(fs.readFileSync(knowledgeBaseFilePath, 'utf-8'));
+    
+
+    // 提取关键字
+    const keywordList: string[] = [];
+    for (const knowledge of knowledgeBase) {
+      const regex = new RegExp(knowledge.keyword, 'i');
+      if (regex.test(rawText)) {
+        keywordList.push(knowledge.keyword);
+        context.push(knowledge.context);
+      }
+    }
+    const contextString = context.join(' ');
+    //add by hyw end===================
+    
+
     if (messageType == MessageType.Audio){
       // 保存语音文件
       const fileBox = await message.toFileBox();
@@ -281,8 +309,11 @@ export class ChatGPTBot {
       }
       return;
     }
+
+    // 通过上下文调用 ChatGPT  
     if (this.triggerGPTMessage(rawText, privateChat)) {
       const text = this.cleanMessage(rawText, privateChat);
+      const contextText = `${contextString} ${text}`.trim();  //add by hyw
       if (privateChat) {
         return await this.onPrivateMessage(talker, text);
       } else{
